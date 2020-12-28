@@ -47,7 +47,7 @@ setWatch(function() {
       0x180F : [String(Puck.getBatteryPercentage())],
       0x2a01 : [String(0)]
     });
-  }, 375*3);
+  }, 375*4);
 }, BTN, {edge:"rising", repeat:true, debounce:100});
 
 // ---------------------------------------------------------------------------------------------
