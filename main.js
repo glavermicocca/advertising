@@ -1,6 +1,7 @@
 NRF.setTxPower(4);
+NRF.setConnectionInterval(200);
 
-const MINUTE = 1000; //60 * 1000;
+const MINUTE = 5 * 1000;
 
 const getBatt = () => {
   const batt = E.getBattery();
@@ -32,7 +33,6 @@ const toCharCodeArray = (utf8) => {
 const blinkRosso = () => {LED1.glow(200, 1000);};
 const blinkVerde = () => {LED2.glow(200, 1000);};
 const blinkBianco = () => {LED3.glow(200, 1000);};
-const blinkBiancoBreve = () => {LED3.glow(200, 600);};
 
 NRF.setServices(
   {
@@ -65,40 +65,50 @@ NRF.setServices(
 );
 NRF.setAdvertising({}, {name:"Puck.js"});
 
-var idIntervalValues;
-var cnt = 0;
+var idIntervalValuesPir;
+var idIntervalValuesTemp;
+var idIntervalValuesBatt;
 const startHere = () => {
-  idIntervalValues = setInterval(() => {
-    cnt++;
-    var value;
-    if(cnt % 4 == 0){
-     value = getMag();
-    } else if(cnt % 4 == 1){
-      value = getPir();
-    } else if(cnt % 4 == 2){
-      value = getTemp();
-    } else if(cnt % 4 == 3){
-      value = getBatt();
-    }
-    if(value != null){
-      blinkBiancoBreve();
-      NRF.updateServices({
-        "80b7ee5f-fb59-4714-939e-67703691bd19": {
-          "80b7ee5f-fb60-4714-939e-67703691bd19": {
-            value: toCharCodeArray(value),
-            notify: true,
-            writable: true,
-            readable: true,
-          }
-        },
-      },{ uart: false, advertise: ["80b7ee5f-fb59-4714-939e-67703691bd19"] });
-    }
-  }, MINUTE * 10);
+  cnt = 0;
+  blinkVerde();
+  setupUUID();
+};
+
+const setupUUID = ()=>{
+    idIntervalValuesPir = setTimeout(()=>{
+      setupService(getPir());
+    },MINUTE*3);
+    idIntervalValuesTemp = setTimeout(()=>{
+      setupService(getTemp());
+    },MINUTE*3+5000);
+    idIntervalValuesBatt = setTimeout(()=>{
+      setupService(getBatt());
+    },MINUTE*3+10000);
+};
+
+const setupService = (value) =>{
+  NRF.wake();
+  if(value != null){
+    blinkBianco();
+    NRF.updateServices({
+      "80b7ee5f-fb59-4714-939e-67703691bd19": {
+        "80b7ee5f-fb60-4714-939e-67703691bd19": {
+          value: toCharCodeArray(value),
+          notify: true,
+          writable: true,
+          readable: true,
+        }
+      },
+    },{ uart: false, advertise: ["80b7ee5f-fb59-4714-939e-67703691bd19"] });
+  }
 };
 
 // On disconnect, stop the servo
 NRF.on("disconnect", () => {
-  if (idIntervalValues) clearInterval(idIntervalValues);
+  if (idIntervalValuesPir) clearInterval(idIntervalValuesPir);
+  if (idIntervalValuesTemp) clearInterval(idIntervalValuesTemp);
+  if (idIntervalValuesBatt) clearInterval(idIntervalValuesBatt);
+  if (idIntervalBtn) clearInterval(idIntervalBtn);
   blinkRosso();
   address = null;
 });
@@ -106,9 +116,8 @@ NRF.on("disconnect", () => {
 // On disconnect, stop the servo
 var address;
 NRF.on("connect", (addr) => {
-  startHere();
   address = addr;
-  blinkVerde();
+  startHere();
 });
 
 // -----------------------------------------------------------------
@@ -119,22 +128,18 @@ var log = print;
 var idIntervalBtn;
 function flagRising(e){
   if(address){
+
     var valueL = 0;
-    if(idIntervalValues){changeInterval(idIntervalValues, MINUTE*10);}
+
+    if(idIntervalValuesPir){changeInterval(idIntervalValuesPir, MINUTE * 3);}
+    if(idIntervalValuesTemp){changeInterval(idIntervalValuesTemp, MINUTE * 3 + 5000);}
+    if(idIntervalValuesBatt){changeInterval(idIntervalValuesBatt, MINUTE * 3 + 10000);}
+
     idIntervalBtn = setInterval(()=>{
       var value = ++valueL%10;
       analogWrite(LED2, value*0.1);
-      NRF.updateServices({
-        "80b7ee5f-fb59-4714-939e-67703691bd19": {
-          "80b7ee5f-fb60-4714-939e-67703691bd19": {
-            value: toCharCodeArray(`S${value}`),
-            notify: true,
-            writable: true,
-            readable: true,
-          }
-        },
-      },{ uart: false, advertise: ["80b7ee5f-fb59-4714-939e-67703691bd19"] });
-    }, 420);
+      setupService(`S${value}`);
+    }, 280);
   }
 }
 var toggle = false;
@@ -146,9 +151,7 @@ function flag(e) {
     digitalWrite(LED2,0);
     digitalWrite(LED3,0);
 
-    if(idIntervalBtn != null){
-      clearInterval(idIntervalBtn);
-    }
+    if(idIntervalBtn != null){clearInterval(idIntervalBtn);}
 
     if (l > 0.4) {
       //long
@@ -156,18 +159,10 @@ function flag(e) {
       //short
       LED3.glow(500, 1000);
       toggle = !toggle;
-      var valueS = `S${toggle}`;
-      NRF.updateServices({
-        "80b7ee5f-fb59-4714-939e-67703691bd19": {
-          "80b7ee5f-fb60-4714-939e-67703691bd19": {
-            value: toCharCodeArray(valueS),
-            notify: true,
-            writable: true,
-            readable: true,
-          }
-        },
-      },{ uart: false, advertise: ["80b7ee5f-fb59-4714-939e-67703691bd19"] });
+      setupService(`S${toggle}`);
     }
+  } else {
+    blinkRosso();
   }
 }
 // When button pressed
@@ -178,35 +173,17 @@ setWatch(flagRising, BTN, { repeat: true, edge: "rising", debounce: 50  });
 // ----------------------------- GLOW ---------------------------------
 // --------------------------------------------------------------------
 
-// add a new function to all pins to glow
+var interval;
 Pin.prototype.glow = function(milliseconds, Hz) {
-  // see if the user specified a Hz
-  // if she/he did not, we default to 60Hz
   Hz = ((typeof Hz) === "undefined") ? 60 : Hz;
-  // save the pin: this is important, as in an internal function
-  // 'this' would refer to the function, and no longer the pin.
   var pin = this;
-  // remember that to achieve a certain Hz, we need to 
-  // have cycles every 1000/Hz milliseconds
   var cycle = 1000/Hz;
-  // we need to cheat a bit and take pos > 0 since
-  // sin(0) = 0 and digitalPulse does not accept 0
   var pos = 0.001;
-  // next, we create the function that will call our digital pulse
   var interval = setInterval(function() {
-    // we send our pulse, and we use the sine function to determine the length
-    // the use of Math.pow( .. ) will epsecially lower the lowest values, while
-    // keeping 1 almost 1. This will help to ensure that only the brightest
-    // part of the glow is truly bright.
     digitalPulse(pin, 1, Math.pow(Math.sin(pos*Math.PI), 2)*cycle);
-    // we advance to the next position, determined by 
-    // how long we want one glow to take
     pos += 1/(milliseconds/cycle);
-    // if we are done, we clear this interval
     if (pos>=1) clearInterval(interval);
-    // finally, we launch this every cycle, where the dimmer cycles
-    // will have a shorter pulse and the brighter cycles a longer pulse
   }, cycle);
 };
 
-blinkBiancoBreve();
+blinkBianco();
