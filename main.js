@@ -1,7 +1,7 @@
 NRF.setTxPower(4);
 NRF.setConnectionInterval(200);
 
-const MINUTE = 5 * 1000;
+const MINUTE = 60 * 1000;
 
 const getBatt = () => {
   const batt = E.getBattery();
@@ -30,9 +30,9 @@ const toCharCodeArray = (utf8) => {
   return arr;
 };
 
-const blinkRosso = () => {LED1.glow(200, 1000);};
-const blinkVerde = () => {LED2.glow(200, 1000);};
-const blinkBianco = () => {LED3.glow(200, 1000);};
+const blinkRosso = () => {LED1.glow(100, 500);};
+const blinkVerde = () => {LED2.glow(100, 500);};
+const blinkBianco = () => {LED3.glow(100, 500);};
 
 NRF.setServices(
   {
@@ -63,7 +63,7 @@ NRF.setServices(
   },
   { uart: false, advertise: ["80b7ee5f-fb59-4714-939e-67703691bd19"] }
 );
-NRF.setAdvertising({}, {name:"Puck.js"});
+//NRF.setAdvertising({}, {name:"Puck.js"});
 
 var idIntervalValuesPir;
 var idIntervalValuesTemp;
@@ -87,7 +87,6 @@ const setupUUID = ()=>{
 };
 
 const setupService = (value) =>{
-  NRF.wake();
   if(value != null){
     blinkBianco();
     NRF.updateServices({
